@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Red Team AI Agent</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.1.0/css/xterm.css">
+    <style>
+        body {
+            background-color: #121212;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .navbar {
+            background-color: #1e1e1e;
+            border-bottom: 1px solid #333;
+        }
+        .card {
+            background-color: #1e1e1e;
+            border: 1px solid #333;
+            margin-bottom: 20px;
+        }
+        .card-header {
+            background-color: #252525;
+            border-bottom: 1px solid #333;
+            color: #e0e0e0;
+        }
+        .terminal-container {
+            height: 400px;
+            background-color: #0c0c0c;
+            border-radius: 5px;
+            padding: 10px;
+            overflow: hidden;
+        }
+        .phase-item {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            background-color: #252525;
+            border-left: 4px solid #555;
+        }
+        .phase-active {
+            border-left-color: #28a745;
+            background-color: #1e3a2b;
+        }
+        .phase-completed {
+            border-left-color: #007bff;
+            background-color: #1e2a3a;
+        }
+        .phase-pending {
+            border-left-color: #555;
+            background-color: #252525;
+        }
+        .vulnerability-item {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            background-color: #3a1e1e;
+            border-left: 4px solid #dc3545;
+        }
+        .vulnerability-critical {
+            background-color: #3a1e1e;
+            border-left-color: #dc3545;
+        }
+        .vulnerability-high {
+            background-color: #3a2a1e;
+            border-left-color: #fd7e14;
+        }
+        .vulnerability-medium {
+            background-color: #3a3a1e;
+            border-left-color: #ffc107;
+        }
+        .vulnerability-low {
+            background-color: #1e3a1e;
+            border-left-color: #28a745;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            border-color: #007bff;
+        }
+        .btn-success {
+            background-color: #28a745;
+            border-color: #28a745;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            border-color: #dc3545;
+        }
+        .btn-warning {
+            background-color: #ffc107;
+            border-color: #ffc107;
+            color: #212529;
+        }
+        .progress {
+            height: 25px;
+            background-color: #252525;
+        }
+        .progress-bar {
+            background-color: #007bff;
+        }
+        #llm-analysis {
+            height: 200px;
+            overflow-y: auto;
+            background-color: #252525;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+        }
+        .command-text {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .result-text {
+            color: #e0e0e0;
+        }
+        .analysis-text {
+            color: #007bff;
+        }
+        .error-text {
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <span class="text-danger">Red Team</span> AI Agent
+            </a>
+            <div class="d-flex">
+                <span class="navbar-text me-3" id="status-indicator">
+                    Status: <span class="badge bg-secondary">Idle</span>
+                </span>
+                <span class="navbar-text" id="timer">
+                    Time: 00:00:00
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header">
+                        Target Configuration
+                    </div>
+                    <div class="card-body">
+                        <form id="target-form">
+                            <div class="mb-3">
+                                <label for="target-input" class="form-label">Target URL/IP</label>
+                                <input type="text" class="form-control" id="target-input" placeholder="example.com or 192.168.1.1">
+                            </div>
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-success" id="start-btn">Start Pentest</button>
+                                <button type="button" class="btn btn-warning" id="pause-btn" disabled>Pause</button>
+                                <button type="button" class="btn btn-danger" id="stop-btn" disabled>Stop</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        Pentest Phases
+                    </div>
+                    <div class="card-body">
+                        <div class="progress mb-3">
+                            <div class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" id="overall-progress">0%</div>
+                        </div>
+                        <div id="phases-container">
+                            <div class="phase-item phase-pending" id="phase-reconnaissance">
+                                <strong>1. Reconnaissance</strong>
+                                <div class="progress mt-2" style="height: 5px;">
+                                    <div class="progress-bar" role="progressbar" style="width: 0%;" id="progress-reconnaissance"></div>
+                                </div>
+                            </div>
+                            <div class="phase-item phase-pending" id="phase-vulnerability_scanning">
+                                <strong>2. Vulnerability Scanning</strong>
+                                <div class="progress mt-2" style="height: 5px;">
+                                    <div class="progress-bar" role="progressbar" style="width: 0%;" id="progress-vulnerability_scanning"></div>
+                                </div>
+                            </div>
+                            <div class="phase-item phase-pending" id="phase-vulnerability_analysis">
+                                <strong>3. Vulnerability Analysis</strong>
+                                <div class="progress mt-2" style="height: 5px;">
+                                    <div class="progress-bar" role="progressbar" style="width: 0%;" id="progress-vulnerability_analysis"></div>
+                                </div>
+                            </div>
+                            <div class="phase-item phase-pending" id="phase-exploitation">
+                                <strong>4. Exploitation</strong>
+                                <div class="progress mt-2" style="height: 5px;">
+                                    <div class="progress-bar" role="progressbar" style="width: 0%;" id="progress-exploitation"></div>
+                                </div>
+                            </div>
+                            <div class="phase-item phase-pending" id="phase-post_exploitation">
+                                <strong>5. Post-Exploitation</strong>
+                                <div class="progress mt-2" style="height: 5px;">
+                                    <div class="progress-bar" role="progressbar" style="width: 0%;" id="progress-post_exploitation"></div>
+                                </div>
+                            </div>
+                            <div class="phase-item phase-pending" id="phase-reporting">
+                                <strong>6. Reporting</strong>
+                                <div class="progress mt-2" style="height: 5px;">
+                                    <div class="progress-bar" role="progressbar" style="width: 0%;" id="progress-reporting"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        Metasploit Terminal
+                    </div>
+                    <div class="card-body">
+                        <div class="terminal-container" id="terminal-container"></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        LLM Analysis
+                    </div>
+                    <div class="card-body">
+                        <div id="llm-analysis"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header">
+                        Discovered Vulnerabilities
+                    </div>
+                    <div class="card-body">
+                        <div id="vulnerabilities-container">
+                            <div class="text-center text-muted" id="no-vulns-message">
+                                No vulnerabilities discovered yet
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        Reports
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-primary" id="generate-report-btn" disabled>Generate Report</button>
+                        </div>
+                        <div class="mt-3" id="reports-container">
+                            <div class="text-center text-muted">
+                                No reports generated yet
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.1.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.6.1/dist/socket.io.min.js"></script>
+    <script>
+        // Initialize terminal
+        const terminal = new Terminal({
+            cursorBlink: true,
+            theme: {
+                background: '#0c0c0c',
+                foreground: '#e0e0e0'
+            }
+        });
+        terminal.open(document.getElementById('terminal-container'));
+        terminal.writeln('Red Team AI Agent - Metasploit Terminal');
+        terminal.writeln('----------------------------------------');
+        terminal.writeln('Waiting for pentest to start...');
+
+        // Initialize socket.io
+        const socket = io();
+
+        // Global variables
+        let pentestRunning = false;
+        let startTime = null;
+        let timerInterval = null;
+        let currentPhase = null;
+        let phaseSteps = {
+            "reconnaissance": 10,
+            "vulnerability_scanning": 15,
+            "vulnerability_analysis": 10,
+            "exploitation": 10,
+            "post_exploitation": 10,
+            "reporting": 5
+        };
+        let currentSteps = {
+            "reconnaissance": 0,
+            "vulnerability_scanning": 0,
+            "vulnerability_analysis": 0,
+            "exploitation": 0,
+            "post_exploitation": 0,
+            "reporting": 0
+        };
+
+        // DOM elements
+        const startBtn = document.getElementById('start-btn');
+        const pauseBtn = document.getElementById('pause-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const targetForm = document.getElementById('target-form');
+        const targetInput = document.getElementById('target-input');
+        const statusIndicator = document.getElementById('status-indicator').querySelector('span');
+        const timerElement = document.getElementById('timer');
+        const overallProgress = document.getElementById('overall-progress');
+        const llmAnalysis = document.getElementById('llm-analysis');
+        const vulnerabilitiesContainer = document.getElementById('vulnerabilities-container');
+        const noVulnsMessage = document.getElementById('no-vulns-message');
+        const generateReportBtn = document.getElementById('generate-report-btn');
+
+        // Event listeners
+        targetForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const target = targetInput.value.trim();
+            if (target) {
+                startPentest(target);
+            } else {
+                alert('Please enter a target URL or IP address');
+            }
+        });
+
+        pauseBtn.addEventListener('click', function() {
+            if (pentestRunning) {
+                pausePentest();
+            } else {
+                resumePentest();
+            }
+        });
+
+        stopBtn.addEventListener('click', function() {
+            stopPentest();
+        });
+
+        generateReportBtn.addEventListener('click', function() {
+            generateReport();
+        });
+
+        // Socket.io event handlers
+        socket.on('connect', function() {
+            console.log('Connected to server');
+            terminal.writeln('\r\nConnected to server');
+        });
+
+        socket.on('disconnect', function() {
+            console.log('Disconnected from server');
+            terminal.writeln('\r\nDisconnected from server');
+            updateStatus('error');
+        });
+
+        socket.on('status_update', function(data) {
+            console.log('Status update:', data);
+            updateStatus(data.status);
+            if (data.current_phase) {
+                updatePhase(data.current_phase, data.current_step);
+            }
+        });
+
+        socket.on('log_update', function(data) {
+            console.log('Log update:', data);
+            appendLog(data);
+        });
+
+        socket.on('vulnerability_found', function(data) {
+            console.log('Vulnerability found:', data);
+            addVulnerability(data);
+        });
+
+        socket.on('phase_change', function(data) {
+            console.log('Phase change:', data);
+            completePhase(data.previous_phase);
+            updatePhase(data.new_phase, 0);
+        });
+
+        // Functions
+        function startPentest(target) {
+            fetch('/api/pentest/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ target: target })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('Pentest started:', data);
+                    pentestRunning = true;
+                    startTime = new Date();
+                    startTimer();
+                    updateStatus('running');
+                    updateButtons(true);
+                    terminal.clear();
+                    terminal.writeln(`Starting pentest against ${target}...`);
+                    resetPhases();
+                    updatePhase('reconnaissance', 0);
+                } else {
+                    console.error('Failed to start pentest:', data.error);
+                    alert(`Failed to start pentest: ${data.error}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error starting pentest:', error);
+                alert('Error starting pentest. See console for details.');
+            });
+        }
+
+        function pausePentest() {
+            fetch('/api/pentest/pause', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('Pentest paused:', data);
+                    pentestRunning = false;
+                    updateStatus('paused');
+                    pauseBtn.textContent = 'Resume';
+                    stopTimer();
+                } else {
+                    console.error('Failed to pause pentest:', data.error);
+                    alert(`Failed to pause pentest: ${data.error}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error pausing pentest:', error);
+                alert('Error pausing pentest. See console for details.');
+            });
+        }
+
+        function resumePentest() {
+            fetch('/api/pentest/resume', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('Pentest resumed:', data);
+                    pentestRunning = true;
+                    updateStatus('running');
+                    pauseBtn.textContent = 'Pause';
+                    startTimer();
+                } else {
+                    console.error('Failed to resume pentest:', data.error);
+                    alert(`Failed to resume pentest: ${data.error}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error resuming pentest:', error);
+                alert('Error resuming pentest. See console for details.');
+            });
+        }
+
+        function stopPentest() {
+            fetch('/api/pentest/stop', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('Pentest stopped:', data);
+                    pentestRunning = false;
+                    updateStatus('stopped');
+                    updateButtons(false);
+                    stopTimer();
+                    terminal.writeln('\r\nPentest stopped by user');
+                } else {
+                    console.error('Failed to stop pentest:', data.error);
+                    alert(`Failed to stop pentest: ${data.error}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error stopping pentest:', error);
+                alert('Error stopping pentest. See console for details.');
+            });
+        }
+
+        function generateReport() {
+            // This would be implemented to call a report generation API
+            alert('Report generation not implemented in this demo');
+        }
+
+        function updateStatus(status) {
+            statusIndicator.className = 'badge';
+            switch (status) {
+                case 'idle':
+                    statusIndicator.classList.add('bg-secondary');
+                    statusIndicator.textContent = 'Idle';
+                    break;
+                case 'running':
+                    statusIndicator.classList.add('bg-success');
+                    statusIndicator.textContent = 'Running';
+                    break;
+                case 'paused':
+                    statusIndicator.classList.add('bg-warning');
+                    statusIndicator.textContent = 'Paused';
+                    break;
+                case 'completed':
+                    statusIndicator.classList.add('bg-primary');
+                    statusIndicator.textContent = 'Completed';
+                    pentestRunning = false;
+                    updateButtons(false);
+                    stopTimer();
+                    generateReportBtn.disabled = false;
+                    break;
+                case 'stopped':
+                    statusIndicator.classList.add('bg-info');
+                    statusIndicator.textContent = 'Stopped';
+                    break;
+                case 'error':
+                    statusIndicator.classList.add('bg-danger');
+                    statusIndicator.textContent = 'Error';
+                    pentestRunning = false;
+                    updateButtons(false);
+                    stopTimer();
+                    break;
+                default:
+                    statusIndicator.classList.add('bg-secondary');
+                    statusIndicator.textContent = status;
+            }
+        }
+
+        function updateButtons(running) {
+            if (running) {
+                startBtn.disabled = true;
+                pauseBtn.disabled = false;
+                stopBtn.disabled = false;
+                targetInput.disabled = true;
+            } else {
+                startBtn.disabled = false;
+                pauseBtn.disabled = true;
+                stopBtn.disabled = true;
+                targetInput.disabled = false;
+                pauseBtn.textContent = 'Pause';
+            }
+        }
+
+        function startTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+            }
+            timerInterval = setInterval(updateTimer, 1000);
+        }
+
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }
+
+        function updateTimer() {
+            if (!startTime) return;
+            
+            const now = new Date();
+            const diff = now - startTime;
+            const hours = Math.floor(diff / 3600000);
+            const minutes = Math.floor((diff % 3600000) / 60000);
+            const seconds = Math.floor((diff % 60000) / 1000);
+            
+            timerElement.textContent = `Time: ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function resetPhases() {
+            const phases = document.querySelectorAll('.phase-item');
+            phases.forEach(phase => {
+                phase.className = 'phase-item phase-pending';
+                const progressBar = phase.querySelector('.progress-bar');
+                progressBar.style.width = '0%';
+            });
+            
+            currentSteps = {
+                "reconnaissance": 0,
+                "vulnerability_scanning": 0,
+                "vulnerability_analysis": 0,
+                "exploitation": 0,
+                "post_exploitation": 0,
+                "reporting": 0
+            };
+            
+            overallProgress.style.width = '0%';
+            overallProgress.textContent = '0%';
+            
+            // Reset vulnerabilities
+            vulnerabilitiesContainer.innerHTML = '';
+            vulnerabilitiesContainer.appendChild(noVulnsMessage);
+            
+            // Reset LLM analysis
+            llmAnalysis.innerHTML = '';
+        }
+
+        function updatePhase(phase, step) {
+            if (currentPhase) {
+                const currentPhaseElement = document.getElementById(`phase-${currentPhase}`);
+                if (currentPhaseElement) {
+                    currentPhaseElement.classList.remove('phase-active');
+                }
+            }
+            
+            currentPhase = phase;
+            currentSteps[phase] = step;
+            
+            const phaseElement = document.getElementById(`phase-${phase}`);
+            if (phaseElement) {
+                phaseElement.classList.remove('phase-pending');
+                phaseElement.classList.add('phase-active');
+                
+                const progressBar = document.getElementById(`progress-${phase}`);
+                const percentage = Math.min(100, Math.round((step / phaseSteps[phase]) * 100));
+                progressBar.style.width = `${percentage}%`;
+            }
+            
+            updateOverallProgress();
+        }
+
+        function completePhase(phase) {
+            const phaseElement = document.getElementById(`phase-${phase}`);
+            if (phaseElement) {
+                phaseElement.classList.remove('phase-active');
+                phaseElement.classList.add('phase-completed');
+                
+                const progressBar = document.getElementById(`progress-${phase}`);
+                progressBar.style.width = '100%';
+            }
+            
+            currentSteps[phase] = phaseSteps[phase];
+            updateOverallProgress();
+        }
+
+        function updateOverallProgress() {
+            let totalSteps = 0;
+            let completedSteps = 0;
+            
+            for (const phase in phaseSteps) {
+                totalSteps += phaseSteps[phase];
+                completedSteps += Math.min(currentSteps[phase], phaseSteps[phase]);
+            }
+            
+            const percentage = Math.round((completedSteps / totalSteps) * 100);
+            overallProgress.style.width = `${percentage}%`;
+            overallProgress.textContent = `${percentage}%`;
+        }
+
+        function appendLog(log) {
+            const timestamp = new Date(log.timestamp * 1000).toLocaleTimeString();
+            
+            switch (log.type) {
+                case 'command':
+                    terminal.writeln(`\r\n[${timestamp}] $ ${log.content}`);
+                    break;
+                case 'result':
+                    terminal.writeln(`\r\n${log.content}`);
+                    break;
+                case 'analysis':
+                    // Update LLM analysis panel
+                    llmAnalysis.innerHTML = `<div class="analysis-text">${formatAnalysis(log.content)}</div>`;
+                    break;
+                case 'info':
+                    terminal.writeln(`\r\n[${timestamp}] [INFO] ${log.content}`);
+                    break;
+                case 'error':
+                    terminal.writeln(`\r\n[${timestamp}] [ERROR] ${log.content}`);
+                    break;
+                default:
+                    terminal.writeln(`\r\n[${timestamp}] ${log.content}`);
+            }
+            
+            // Auto-scroll terminal
+            terminal.scrollToBottom();
+        }
+
+        function formatAnalysis(analysis) {
+            // Replace newlines with <br> and format sections
+            let formatted = analysis.replace(/\n/g, '<br>');
+            formatted = formatted.replace(/RESULT_SUMMARY:/g, '<strong>RESULT SUMMARY:</strong>');
+            formatted = formatted.replace(/KEY_FINDINGS:/g, '<strong>KEY FINDINGS:</strong>');
+            formatted = formatted.replace(/VULNERABILITIES:/g, '<strong>VULNERABILITIES:</strong>');
+            formatted = formatted.replace(/NEXT_STEPS:/g, '<strong>NEXT STEPS:</strong>');
+            return formatted;
+        }
+
+        function addVulnerability(vuln) {
+            // Remove "no vulnerabilities" message if present
+            if (document.contains(noVulnsMessage)) {
+                noVulnsMessage.remove();
+            }
+            
+            // Determine severity (this would come from the backend in a real implementation)
+            let severity = 'critical';
+            if (vuln.name.toLowerCase().includes('low')) severity = 'low';
+            if (vuln.name.toLowerCase().includes('medium')) severity = 'medium';
+            if (vuln.name.toLowerCase().includes('high')) severity = 'high';
+            
+            const vulnElement = document.createElement('div');
+            vulnElement.className = `vulnerability-item vulnerability-${severity}`;
+            vulnElement.innerHTML = `
+                <strong>${vuln.name}</strong>
+                <div class="small text-muted">Found during ${formatPhase(vuln.phase)}</div>
+                <div class="mt-2">
+                    <button class="btn btn-sm btn-outline-light">Details</button>
+                </div>
+            `;
+            
+            vulnerabilitiesContainer.appendChild(vulnElement);
+        }
+
+        function formatPhase(phase) {
+            return phase.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        }
+
+        // Initialize by fetching current status
+        fetch('/api/status')
+            .then(response => response.json())
+            .then(data => {
+                console.log('Initial status:', data);
+                updateStatus(data.status);
+                
+                if (data.status === 'running' || data.status === 'paused') {
+                    pentestRunning = data.status === 'running';
+                    updateButtons(true);
+                    if (data.start_time) {
+                        startTime = new Date(data.start_time * 1000);
+                        if (pentestRunning) {
+                            startTimer();
+                        } else {
+                            updateTimer();
+                        }
+                    }
+                    
+                    if (data.target) {
+                        targetInput.value = data.target;
+                    }
+                    
+                    if (data.current_phase) {
+                        updatePhase(data.current_phase, data.current_step || 0);
+                    }
+                    
+                    if (data.status === 'paused') {
+                        pauseBtn.textContent = 'Resume';
+                    }
+                }
+                
+                // Load vulnerabilities
+                if (data.vulnerabilities && data.vulnerabilities.length > 0) {
+                    data.vulnerabilities.forEach(vuln => {
+                        addVulnerability(vuln);
+                    });
+                }
+                
+                // Load logs
+                if (data.logs && data.logs.length > 0) {
+                    terminal.clear();
+                    terminal.writeln('Red Team AI Agent - Metasploit Terminal');
+                    terminal.writeln('----------------------------------------');
+                    data.logs.forEach(log => {
+                        appendLog(log);
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching initial status:', error);
+            });
+    </script>
+</body>
+</html>
